@@ -6,7 +6,7 @@ import SettingsModal from './components/SettingsModal';
 import { apsService } from './services/aps';
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(apsService.isAuthenticated());
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [hubs, setHubs] = useState([]);
   const [projects, setProjects] = useState([]);
   const [selectedHub, setSelectedHub] = useState(null);
@@ -15,41 +15,32 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  const hasProcessedCallback = React.useRef(false);
-
-  // Handle OAuth Callback/Auto-Login
+  // Auth state from backend (session). OAuth callback is handled by backend; we just re-check after load.
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get('code');
-    
-    if (code && !isAuthenticated && !hasProcessedCallback.current) {
-      hasProcessedCallback.current = true;
-      setLoading(true);
-      apsService.handleCallback(code)
-        .then(() => {
-          setIsAuthenticated(true);
-          const newUrl = window.location.origin + window.location.pathname;
-          window.history.replaceState({}, document.title, newUrl);
-        })
-        .catch(err => {
-          console.error('Auth error:', err);
-          hasProcessedCallback.current = false; // Reset on error to allow retry
-          const newUrl = window.location.origin + window.location.pathname;
-          window.history.replaceState({}, document.title, newUrl);
-        })
-        .finally(() => setLoading(false));
-    } else if (apsService.getAuthMode() === '2legged' && !isAuthenticated) {
-      // Auto-login for 2-legged if credentials exist
-      const { clientId, clientSecret } = apsService.getStoredCredentials();
-      if (clientId && clientSecret) {
-        setLoading(true);
-        apsService.login2Legged(clientId, clientSecret)
-          .then(() => setIsAuthenticated(true))
-          .catch(err => console.error('2-legged auto-login failed:', err))
-          .finally(() => setLoading(false));
-      }
+    const error = urlParams.get('error');
+    if (error) {
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
-  }, [isAuthenticated]);
+    setLoading(true);
+    apsService.isAuthenticated()
+      .then(setIsAuthenticated)
+      .catch(() => setIsAuthenticated(false))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Auto 2-legged login when credentials are stored and mode is 2legged
+  useEffect(() => {
+    if (isAuthenticated || loading) return;
+    if (apsService.getAuthMode() !== '2legged') return;
+    const { clientId, clientSecret } = apsService.getStoredCredentials();
+    if (!clientId || !clientSecret) return;
+    setLoading(true);
+    apsService.login2Legged(clientId, clientSecret)
+      .then(() => setIsAuthenticated(true))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [isAuthenticated, loading]);
 
   const handleSettingsSave = () => {
     const mode = apsService.getAuthMode();
@@ -59,11 +50,13 @@ function App() {
       setLoading(true);
       apsService.login2Legged(clientId, clientSecret)
         .then(() => setIsAuthenticated(true))
-        .catch(err => alert('2-legged login failed: ' + err.message))
+        .catch(err => alert('2-legged login failed: ' + (err?.message || err)))
         .finally(() => setLoading(false));
     } else {
-      // For 3-legged, we might need to re-authenticate if credentials changed
-      setIsAuthenticated(apsService.isAuthenticated());
+      setLoading(true);
+      apsService.isAuthenticated()
+        .then(setIsAuthenticated)
+        .finally(() => setLoading(false));
     }
   };
 
@@ -143,10 +136,11 @@ function App() {
 
   const handleLogin = () => apsService.login();
   const handleLogout = () => {
-    apsService.logout();
-    setIsAuthenticated(false);
-    setDashboardData([]);
-    setActiveProject(null);
+    apsService.logout().then(() => {
+      setIsAuthenticated(false);
+      setDashboardData([]);
+      setActiveProject(null);
+    });
   };
 
   return (
