@@ -9,11 +9,13 @@ import { DataManagementClient } from '@aps_sdk/data-management';
 import { StaticAuthenticationProvider } from '@aps_sdk/autodesk-sdkmanager';
 import { IssuesClient } from '@aps_sdk/construction-issues';
 import axios from 'axios';
+import Papa from 'papaparse';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const APS_BASE = 'https://developer.api.autodesk.com';
+const DC_BASE = `${APS_BASE}/data-connector/v1`;
 
 // APS credentials (from env or session for 2-legged override)
 const APS_CLIENT_ID = process.env.APS_CLIENT_ID || process.env.VITE_APS_CLIENT_ID;
@@ -251,6 +253,97 @@ app.get('/api/submittals/:projectId', ensureToken, async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+// ---------- Data Connector API (ACC Insight; 3-legged, Account Executive) ----------
+
+async function dcRequest(token, method, path, opts = {}) {
+  const url = path.startsWith('http') ? path : `${DC_BASE}${path}`;
+  const { data } = await axios.request({
+    method,
+    url,
+    headers: { Authorization: `Bearer ${token}`, ...opts.headers },
+    ...opts,
+  });
+  return data;
+}
+
+app.get('/api/dc/requests', ensureToken, async (req, res) => {
+  try {
+    const token = getAccessToken(req);
+    const data = await dcRequest(token, 'GET', '/requests');
+    res.json(data.requests ?? data ?? []);
+  } catch (err) {
+    console.error('dc/requests error:', err?.response?.data || err.message);
+    res.status(err?.response?.status || 500).json({ error: err?.response?.data?.message || err.message });
+  }
+});
+
+app.get('/api/dc/requests/:requestId/jobs', ensureToken, async (req, res) => {
+  try {
+    const token = getAccessToken(req);
+    const data = await dcRequest(token, 'GET', `/requests/${req.params.requestId}/jobs`);
+    res.json(data.jobs ?? data ?? []);
+  } catch (err) {
+    console.error('dc/requests/jobs error:', err?.response?.data || err.message);
+    res.status(err?.response?.status || 500).json({ error: err?.response?.data?.message || err.message });
+  }
+});
+
+app.get('/api/dc/jobs', ensureToken, async (req, res) => {
+  try {
+    const token = getAccessToken(req);
+    const data = await dcRequest(token, 'GET', '/jobs');
+    res.json(data.jobs ?? data ?? []);
+  } catch (err) {
+    console.error('dc/jobs error:', err?.response?.data || err.message);
+    res.status(err?.response?.status || 500).json({ error: err?.response?.data?.message || err.message });
+  }
+});
+
+app.get('/api/dc/jobs/:jobId/data-listing', ensureToken, async (req, res) => {
+  try {
+    const token = getAccessToken(req);
+    const data = await dcRequest(token, 'GET', `/jobs/${req.params.jobId}/data-listing`);
+    res.json(data.data ?? data?.items ?? data ?? []);
+  } catch (err) {
+    console.error('dc/jobs/data-listing error:', err?.response?.data || err.message);
+    res.status(err?.response?.status || 500).json({ error: err?.response?.data?.message || err.message });
+  }
+});
+
+app.get('/api/dc/jobs/:jobId/data/:name', ensureToken, async (req, res) => {
+  try {
+    const token = getAccessToken(req);
+    const name = req.params.name;
+    const path = `/jobs/${req.params.jobId}/data/${encodeURIComponent(name)}`;
+    const raw = await axios.get(`${DC_BASE}${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      responseType: 'text',
+      maxContentLength: 10 * 1024 * 1024,
+    });
+    const text = raw.data;
+    const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
+    const columns = parsed.meta?.fields ?? (parsed.data?.length ? Object.keys(parsed.data[0]) : []);
+    res.json({ columns, rows: parsed.data ?? [], name });
+  } catch (err) {
+    console.error('dc/jobs/data error:', err?.response?.data || err.message);
+    res.status(err?.response?.status || 500).json({ error: err?.response?.data?.message || err.message });
+  }
+});
+
+const server = app.listen(PORT, () => {
   console.log(`ACC Dashboard API running at http://localhost:${PORT}`);
+});
+
+server.on('error', (err) => {
+  console.error('Server error:', err);
+  process.exit(1);
+});
+
+// Keep process alive and log unexpected exits (e.g. when run under npm/concurrently)
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled rejection at', promise, 'reason:', reason);
 });

@@ -11,8 +11,8 @@ Autodesk Construction Cloud dashboard using the official **APS Node.js SDK** (`@
 
 2. **Install and run**
    - `npm install`
-   - **Terminal 1:** `npm run server` — backend (port 3000)
-   - **Terminal 2:** `npm run dev` — frontend (port 5173, proxies `/api` to backend)
+   - **Option A (one terminal):** `npm run dev:all` — runs backend (port 3000) and frontend (port 5173) together.
+   - **Option B (two terminals):** `npm run server` in one, `npm run dev` in the other. The frontend proxies `/api` to the backend.
 
 3. **Auth**
    - **3-legged:** Click “Login with Autodesk” → redirects to backend → Autodesk → back to app. Session is stored on the server; token refresh is handled by the backend.

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, MessageSquare, AlertCircle, FileText, Bell, Search, Settings, HelpCircle, LogOut } from 'lucide-react';
+import { Layout, Database, MessageSquare, Bell, Search, Settings, HelpCircle, LogOut } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import ProjectSelector from './components/ProjectSelector';
 import SettingsModal from './components/SettingsModal';
+import DataConnectorView from './components/DataConnectorView';
 import { apsService } from './services/aps';
 
 function App() {
@@ -14,6 +15,7 @@ function App() {
   const [dashboardData, setDashboardData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [view, setView] = useState('dashboard'); // 'dashboard' | 'data-connector'
 
   // Auth state from backend (session). OAuth callback is handled by backend; we just re-check after load.
   useEffect(() => {
@@ -146,7 +148,16 @@ function App() {
   return (
     <div className="app-container">
       <nav className="sidebar">
-        <Layout className="sidebar-icon active" />
+        <Layout
+          className={`sidebar-icon ${view === 'dashboard' ? 'active' : ''}`}
+          onClick={() => setView('dashboard')}
+          title="Dashboard"
+        />
+        <Database
+          className={`sidebar-icon ${view === 'data-connector' ? 'active' : ''}`}
+          onClick={() => setView('data-connector')}
+          title="Data Connector"
+        />
         <MessageSquare className="sidebar-icon" />
         <Bell className="sidebar-icon" />
         <Search className="sidebar-icon" />
@@ -208,7 +219,9 @@ function App() {
           </div>
         ) : (
           isAuthenticated ? (
-            activeProject ? (
+            view === 'data-connector' ? (
+              <DataConnectorView />
+            ) : activeProject ? (
               <Dashboard columns={dashboardData} />
             ) : (
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>

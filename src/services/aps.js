@@ -8,6 +8,25 @@ const API_BASE = import.meta.env.VITE_APS_API_URL || '';
 
 const credentials = () => ({ credentials: 'include' });
 
+async function checkResponse(res, fallbackMessage) {
+  if (res.ok) return;
+  const is404 = res.status === 404;
+  let body = {};
+  try {
+    body = await res.json();
+  } catch {
+    // e.g. Vite HTML 404 when backend is not running
+  }
+  const msg = body?.error ?? body?.message ?? fallbackMessage;
+  const text = typeof msg === 'string' ? msg : fallbackMessage;
+  if (is404 && !body?.error) {
+    throw new Error(
+      text + ' — Backend may not be running. Start it with: npm run server (or run both: npm run dev:all)'
+    );
+  }
+  throw new Error(text);
+}
+
 export const apsService = {
   getAuthMode() {
     return localStorage.getItem('aps_auth_mode') || '3legged';
@@ -73,31 +92,62 @@ export const apsService = {
 
   async getHubs() {
     const res = await fetch(`${API_BASE}/api/hubs`, credentials());
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to fetch hubs');
+    await checkResponse(res, 'Failed to fetch hubs');
     return res.json();
   },
 
   async getProjects(hubId) {
     const res = await fetch(`${API_BASE}/api/projects/${encodeURIComponent(hubId)}`, credentials());
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to fetch projects');
+    await checkResponse(res, 'Failed to fetch projects');
     return res.json();
   },
 
   async getIssues(projectId) {
     const res = await fetch(`${API_BASE}/api/issues/${encodeURIComponent(projectId)}`, credentials());
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to fetch issues');
+    await checkResponse(res, 'Failed to fetch issues');
     return res.json();
   },
 
   async getRFIs(projectId) {
     const res = await fetch(`${API_BASE}/api/rfis/${encodeURIComponent(projectId)}`, credentials());
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to fetch RFIs');
+    await checkResponse(res, 'Failed to fetch RFIs');
     return res.json();
   },
 
   async getSubmittals(projectId) {
     const res = await fetch(`${API_BASE}/api/submittals/${encodeURIComponent(projectId)}`, credentials());
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to fetch submittals');
+    await checkResponse(res, 'Failed to fetch submittals');
+    return res.json();
+  },
+
+  // Data Connector (ACC Insight; requires Account Executive)
+  async getDataConnectorRequests() {
+    const res = await fetch(`${API_BASE}/api/dc/requests`, credentials());
+    await checkResponse(res, 'Failed to fetch Data Connector requests');
+    return res.json();
+  },
+
+  async getDataConnectorJobs(requestId) {
+    const res = await fetch(`${API_BASE}/api/dc/requests/${encodeURIComponent(requestId)}/jobs`, credentials());
+    await checkResponse(res, 'Failed to fetch jobs');
+    return res.json();
+  },
+
+  async getDataConnectorJobsList() {
+    const res = await fetch(`${API_BASE}/api/dc/jobs`, credentials());
+    await checkResponse(res, 'Failed to fetch jobs');
+    return res.json();
+  },
+
+  async getDataConnectorDataListing(jobId) {
+    const res = await fetch(`${API_BASE}/api/dc/jobs/${encodeURIComponent(jobId)}/data-listing`, credentials());
+    await checkResponse(res, 'Failed to fetch data listing');
+    return res.json();
+  },
+
+  async getDataConnectorFile(jobId, name) {
+    const res = await fetch(`${API_BASE}/api/dc/jobs/${encodeURIComponent(jobId)}/data/${encodeURIComponent(name)}`, credentials());
+    await checkResponse(res, 'Failed to fetch file');
     return res.json();
   },
 };
